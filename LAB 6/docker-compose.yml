@@ -1,0 +1,7 @@
+services : 
+   ssh:
+    image: rastasheep/ubuntu-sshd
+    ports:
+      - 2222:22
+
+ 
