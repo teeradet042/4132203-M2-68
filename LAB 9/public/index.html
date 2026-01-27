@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FCM Notification Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Firebase App and Messaging SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js"></script>
+    <style>
+        .notification-card {
+            transition: all 0.3s ease;
+        }
+        .notification-card:hover {
+            transform: translateY(-2px);
+        }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen font-sans">
+    <div class="max-w-2xl mx-auto p-6">
+        <header class="mb-8 text-center">
+            <h1 class="text-3xl font-bold text-slate-800 mb-2">FCM Messaging App</h1>
+            <p class="text-slate-600">ระบบทดสอบรับการแจ้งเตือนแบบ Real-time</p>
+        </header>
+
+        <!-- Status Card -->
+        <div class="bg-white rounded-xl shadow-sm p-6 mb-6 border border-slate-200">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-semibold text-slate-700">สถานะการเชื่อมต่อ</h2>
+                <span id="status-badge" class="px-3 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-700">รอดำเนินการ</span>
+            </div>
+            
+            <div class="space-y-4">
+                <button id="btn-permission" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition duration-200 flex items-center justify-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z" />
+                    </svg>
+                    ขอสิทธิ์และรับ Token
+                </button>
+
+                <div class="relative">
+                    <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider block mb-1">FCM Registration Token</label>
+                    <textarea id="token-display" readonly class="w-full bg-slate-100 border border-slate-200 rounded-lg p-3 text-xs font-mono text-slate-600 h-24 focus:outline-none" placeholder="Token จะปรากฏที่นี่..."></textarea>
+                    <button id="btn-copy" class="absolute top-8 right-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded px-2 py-1 text-xs shadow-sm">คัดลอก</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Messages List -->
+        <div class="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
+            <h2 class="text-lg font-semibold text-slate-700 mb-4">ข้อความที่ได้รับล่าสุด</h2>
+            <div id="messages-container" class="space-y-3">
+                <p class="text-center text-slate-400 py-8">ยังไม่มีข้อความใหม่ในขณะนี้</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Notification UI (Custom Alert) -->
+    <div id="custom-alert" class="fixed inset-0 flex items-end sm:items-center justify-center p-4 pointer-events-none z-50 opacity-0 transition-opacity duration-300">
+        <div class="bg-slate-800 text-white rounded-lg shadow-2xl p-4 max-w-sm w-full pointer-events-auto flex items-start gap-3">
+            <div class="bg-blue-500 p-2 rounded-full">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </div>
+            <div class="flex-1">
+                <h3 id="alert-title" class="font-bold text-sm">การแจ้งเตือนใหม่</h3>
+                <p id="alert-body" class="text-xs text-slate-300 mt-1"></p>
+            </div>
+            <button onclick="hideAlert()" class="text-slate-400 hover:text-white">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 0114.14 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // --- ส่วนการตั้งค่า Firebase ---
+        // ใส่การตั้งค่าที่ได้จาก Firebase Console ของคุณที่นี่
+        const firebaseConfig = {
+            apiKey: "AIzaSyBObInkRJ-Ij8RnH8X2oTR-6OGGEMT2H-g",
+            authDomain: "teeradet-f2e00.firebaseapp.com",
+            projectId: "teeradet-f2e00",
+            storageBucket: "teeradet-f2e00.firebasestorage.app",
+            messagingSenderId: "937702338398",
+            appId: "1:937702338398:web:c19f11e7bb01f59c84a9cf"
+        };
+
+        // เริ่มต้นการใช้งาน Firebase
+        firebase.initializeApp(firebaseConfig);
+        const messaging = firebase.messaging();
+
+        // ลงทะเบียน Service Worker กับ Firebase Messaging
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/firebase-messaging-sw.js', {
+                scope: '/firebase-cloud-messaging-push-scope'
+            })
+                .then((registration) => {
+                    swRegistration = registration;
+                    console.log('✓ Service Worker registered:', registration);
+                    addMessageToUI('ระบบ', '✓ Service Worker พร้อมใช้งาน');
+                })
+                .catch((error) => {
+                    console.error('✗ Service Worker registration failed:', error);
+                    addMessageToUI('ข้อผิดพลาด', '✗ Service Worker: ' + error.message);
+                });
+        }
+        
+        // ตรวจสอบ Messaging Support
+        if (!messaging) {
+            console.error('✗ Firebase Messaging not initialized');
+            addMessageToUI('ข้อผิดพลาด', '✗ Firebase Messaging ไม่ได้เริ่มต้น');
+        } else {
+            console.log('✓ Firebase Messaging initialized');
+        }
+
+        // องค์ประกอบ UI
+        const btnPermission = document.getElementById('btn-permission');
+        const tokenDisplay = document.getElementById('token-display');
+        const statusBadge = document.getElementById('status-badge');
+        const messagesContainer = document.getElementById('messages-container');
+        const btnCopy = document.getElementById('btn-copy');
+        
+        // ตัวแปรเก็บ Service Worker Registration
+        let swRegistration = null;
+
+        // ฟังก์ชันขอสิทธิ์และรับ Token
+        async function requestPermission() {
+            try {
+                console.log('Checking Notification permission...');
+                console.log('Current permission:', Notification.permission);
+                
+                // หากผู้ใช้ยังไม่เคยตัดสินใจ
+                if (Notification.permission === 'default') {
+                    console.log('Requesting permission...');
+                    const permission = await Notification.requestPermission();
+                    console.log('Permission result:', permission);
+                } 
+                
+                // หากได้รับอนุญาต
+                if (Notification.permission === 'granted') {
+                    console.log('✓ Notification permission granted.');
+                    try {
+                        console.log('📡 Attempting to get Firebase token...');
+                        // ต้องรอให้ Service Worker พร้อมก่อน
+                        const registration = swRegistration || await navigator.serviceWorker.ready;
+                        
+                        const token = await messaging.getToken({ 
+                            vapidKey: 'BGFgnLTUfsovcLOHgnEEJRZw4QxQtOmR3B2p0x2f15d4m05RFmgicCBvmtsV0_5ypHJyfn6rJXNfffAEiDnOTQI',
+                            serviceWorkerRegistration: registration
+                        });
+                        
+                        if (token) {
+                            console.log('✓ Token received:', token);
+                            tokenDisplay.value = token;
+                            statusBadge.innerText = 'เชื่อมต่อแล้ว ✓';
+                            statusBadge.className = 'px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700';
+                            addMessageToUI('ระบบ', '✓ ยินดีด้วย! Token ได้รับสำเร็จ');
+                        } else {
+                            console.log('⚠ No registration token available.');
+                            statusBadge.innerText = 'ไม่สามารถรับ Token ⚠';
+                            statusBadge.className = 'px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700';
+                            addMessageToUI('ระบบ', '⚠ ไม่สามารถรับ Token ลองใหม่');
+                        }
+                    } catch (tokenError) {
+                        console.error('✗ Error:', {
+                            message: tokenError.message,
+                            code: tokenError.code
+                        });
+                        statusBadge.innerText = '✗ เกิดข้อผิดพลาด';
+                        statusBadge.className = 'px-3 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700';
+                        addMessageToUI('ข้อผิดพลาด', '✗ ' + tokenError.message);
+                    }
+                } else if (Notification.permission === 'denied') {
+                    console.warn('✗ Notification permission was denied');
+                    statusBadge.innerText = '✗ ถูกปฏิเสธ';
+                    statusBadge.className = 'px-3 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700';
+                    addMessageToUI('ระบบ', '✗ เปิดการแจ้งเตือน: chrome://settings/content/notifications');
+                }
+            } catch (err) {
+                console.error('An error occurred while retrieving token. ', err);
+                statusBadge.innerText = 'เกิดข้อผิดพลาด';
+                statusBadge.className = 'px-3 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700';
+            }
+        }
+
+        // จัดการข้อความเมื่อแอปเปิดอยู่ (Foreground)
+        messaging.onMessage((payload) => {
+            console.log('Message received. ', payload);
+            const { title, body } = payload.notification;
+            
+            // แสดง UI แจ้งเตือนในหน้าเว็บ
+            showAlert(title, body);
+            // เพิ่มลงในรายการ
+            addMessageToUI(title, body);
+        });
+
+        // ฟังก์ชัน UI Helpers
+        function addMessageToUI(title, body) {
+            if (messagesContainer.querySelector('p')) {
+                messagesContainer.innerHTML = '';
+            }
+
+            const div = document.createElement('div');
+            div.className = 'notification-card bg-slate-50 border-l-4 border-blue-500 p-4 rounded-r-lg shadow-sm';
+            div.innerHTML = `
+                <h4 class="font-bold text-slate-800 text-sm">${title}</h4>
+                <p class="text-slate-600 text-sm mt-1">${body}</p>
+                <span class="text-[10px] text-slate-400 mt-2 block">${new Date().toLocaleTimeString()}</span>
+            `;
+            messagesContainer.prepend(div);
+        }
+
+        function showAlert(title, body) {
+            const alert = document.getElementById('custom-alert');
+            document.getElementById('alert-title').innerText = title;
+            document.getElementById('alert-body').innerText = body;
+            alert.classList.remove('opacity-0');
+            alert.classList.add('opacity-100');
+            
+            setTimeout(hideAlert, 5000);
+        }
+
+        function hideAlert() {
+            const alert = document.getElementById('custom-alert');
+            alert.classList.add('opacity-0');
+            alert.classList.remove('opacity-100');
+        }
+
+        // Event Listeners
+        btnPermission.addEventListener('click', requestPermission);
+        
+        btnCopy.addEventListener('click', () => {
+            tokenDisplay.select();
+            document.execCommand('copy');
+            const originalText = btnCopy.innerText;
+            btnCopy.innerText = 'คัดลอกแล้ว!';
+            setTimeout(() => btnCopy.innerText = originalText, 2000);
+        });
+
+        // ตรวจสอบสถานะเริ่มต้น
+        if (Notification.permission === 'granted') {
+            statusBadge.innerText = 'พร้อมใช้งาน';
+            statusBadge.className = 'px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700';
+        }
+    </script>
+</body>
+</html>
